@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spice-to-ibis"
+version = "0.1.0"
+description = "Convert SPICE circuit simulation models to IBIS format"
+requires-python = ">=3.10"
+license = "MIT"
+
+[project.scripts]
+spice-to-ibis = "spice_to_ibis.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+src = ["src", "tests"]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
