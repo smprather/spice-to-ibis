@@ -1,6 +1,8 @@
 # spice-to-ibis
 
 Generates IBIS (I/O Buffer Information Specification) models from Cadence Spectre subcircuit characterization.
+Also supports NgSPICE.
+Create a SPICE subckt of an LVDS driver to validate differential support.
 
 ## Commands
 

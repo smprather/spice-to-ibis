@@ -1,0 +1,83 @@
+// LVDS Output Driver — 180nm CMOS
+// H-bridge current-steering topology
+//
+// Architecture:
+//   - PMOS/NMOS current mirrors (20:1 ratio, 175uA ref → 3.5mA output)
+//   - 4-transistor H-bridge steers current through differential load
+//   - Series enable transistors for tri-state control
+//   - On-chip inverters for complementary signal generation
+//
+// LVDS spec targets:
+//   - Differential swing: 350mV across 100 Ohm termination
+//   - Common-mode voltage: ~1.2V (no CMFB in this version)
+//   - Nominal current: 3.5mA
+//
+// References:
+//   - TIA/EIA-644 LVDS standard
+//   - "Design of a Low-Power CMOS LVDS I/O Interface Circuit"
+//     (Semantic Scholar, B317/a994)
+//   - "High Speed LVDS Driver for SERDES" (Gupta et al., MIT)
+
+simulator lang=spectre
+
+subckt lvds_driver (outp outn vdd vss din en)
+parameters iref=175u lmin=180n
+
+    // ================================================================
+    // Complementary signal generation
+    // ================================================================
+
+    // Data inverter: din -> din_b
+    mp_dinv (din_b din vdd vdd) pmos w=2u l=lmin
+    mn_dinv (din_b din vss vss) nmos w=1u l=lmin
+
+    // Enable inverter: en -> en_b
+    mp_einv (en_b en vdd vdd) pmos w=2u l=lmin
+    mn_einv (en_b en vss vss) nmos w=1u l=lmin
+
+    // ================================================================
+    // Bias generation (ideal current source + diode-connected mirror)
+    // ================================================================
+
+    // PMOS reference: 175uA into diode-connected PMOS sets Vgs
+    i_pref (vdd pbias) isource dc=iref
+    mp_bref (pbias pbias vdd vdd) pmos w=3u l=lmin
+
+    // NMOS reference: 175uA through diode-connected NMOS sets Vgs
+    i_nref (nbias vss) isource dc=iref
+    mn_bref (nbias nbias vss vss) nmos w=1.5u l=lmin
+
+    // ================================================================
+    // Current source and sink (20:1 mirror ratio -> 3.5mA)
+    // ================================================================
+
+    // PMOS current source
+    mp_cs (cs_p pbias vdd vdd) pmos w=60u l=lmin
+
+    // Series PMOS enable: conducts when en=HIGH (en_b=LOW)
+    mp_en (tail_p en_b cs_p vdd) pmos w=60u l=lmin
+
+    // NMOS current sink
+    mn_cs (cs_n nbias vss vss) nmos w=30u l=lmin
+
+    // Series NMOS enable: conducts when en=HIGH
+    mn_en (tail_n en cs_n vss) nmos w=30u l=lmin
+
+    // ================================================================
+    // H-bridge output steering switches
+    // ================================================================
+    //
+    // din=HIGH (din_b=LOW):
+    //   Mp_a ON, Mn_b ON
+    //   current path: tail_p -> outp -> [load] -> outn -> tail_n
+    //
+    // din=LOW (din_b=HIGH):
+    //   Mp_b ON, Mn_a ON
+    //   current path: tail_p -> outn -> [load] -> outp -> tail_n
+
+    mp_a (outp din_b tail_p vdd) pmos w=24u l=lmin
+    mp_b (outn din   tail_p vdd) pmos w=24u l=lmin
+    mn_a (outp din_b tail_n vss) nmos w=12u l=lmin
+    mn_b (outn din   tail_n vss) nmos w=12u l=lmin
+
+ends lvds_driver
