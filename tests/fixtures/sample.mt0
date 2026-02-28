@@ -1,0 +1,9 @@
+HEADER
+"Title" "rising_tt_1.8V_25.0C"
+"Date" "Mon Jan 01 00:00:00 2026"
+"Simulator" "spectre"
+
+VALUE
+"t20_rise" 2.345e-09
+"t80_rise" 3.456e-09
+END

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spice-to-ibis"
 version = "0.1.0"
-description = "Convert SPICE circuit simulation models to IBIS format"
+description = "Generate IBIS models from Spectre subcircuit characterization"
 requires-python = ">=3.10"
 license = "MIT"
 

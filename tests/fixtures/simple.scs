@@ -1,0 +1,7 @@
+// Minimal subcircuit
+subckt inverter (out in vdd vss)
+
+    mp (out in vdd vdd) pmos w=1u l=100n
+    mn (out in vss vss) nmos w=500n l=100n
+
+ends inverter

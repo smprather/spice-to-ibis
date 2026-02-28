@@ -1,0 +1,25 @@
+// Buffer I/O subcircuit
+// Example Spectre subcircuit for testing
+
+simulator lang=spectre
+
+include "models/nmos.scs" section=tt
+include "models/pmos.scs" section=tt
+
+subckt buf_io (pad vdd vss din en)
+parameters wp=2u wn=1u
+
+    // Pull-up PMOS
+    mp0 (pad din_b vdd vdd) pmos w=wp l=100n
+
+    // Pull-down NMOS
+    mn0 (pad din_i vss vss) nmos w=wn l=100n
+
+    // Enable logic
+    mn1 (din_i din en_i vss) nmos w=wn l=100n
+    mp1 (din_b din vdd vdd) pmos w=wp l=100n
+
+    // Tristate control
+    mn_en (en_i en vss vss) nmos w=500n l=100n
+
+ends buf_io
