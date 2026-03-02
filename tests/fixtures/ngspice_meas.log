@@ -1,0 +1,7 @@
+Circuit: rising_tt_1.8V_25.0C
+
+Doing analysis at TEMP = 25.000000 and target TEMP = 25.000000
+
+No. of Data Rows : 11
+t20_rise = 1.850000e-09
+t80_rise = 2.950000e-09

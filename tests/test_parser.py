@@ -1,11 +1,13 @@
-"""Tests for the Spectre subcircuit parser."""
+"""Tests for the Spectre and NgSPICE subcircuit parsers."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from spice_to_ibis.models.spice import PinRole
-from spice_to_ibis.parser import SpiceParser
+from spice_to_ibis.parser import NgspiceParser, SpiceParser, get_parser
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -62,3 +64,67 @@ class TestParseSubcircuit:
         parser = SpiceParser()
         result = parser.parse(FIXTURES / "simple.scs")
         assert result.pin_map == {}
+
+
+class TestNgspiceParser:
+    def test_parse_reads_lines(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "buf_io.cir")
+        assert len(result.raw_lines) > 0
+
+    def test_parse_extracts_name(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "buf_io.cir")
+        assert result.name == "buf_io"
+
+    def test_parse_extracts_ports(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "buf_io.cir")
+        assert result.ports == ["pad", "vdd", "vss", "din", "en"]
+
+    def test_parse_extracts_inline_parameters(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "buf_io.cir")
+        assert result.parameters == {"wp": "2u", "wn": "1u"}
+
+    def test_parse_extracts_includes(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "buf_io.cir")
+        assert "models/nmos.cir" in result.include_paths
+        assert "models/pmos.cir" in result.include_paths
+
+    def test_parse_with_pin_map(self):
+        parser = NgspiceParser()
+        pin_map = {
+            "pad": PinRole.PAD,
+            "vdd": PinRole.VDD,
+            "vss": PinRole.VSS,
+            "din": PinRole.INPUT,
+            "en": PinRole.ENABLE,
+        }
+        result = parser.parse(FIXTURES / "buf_io.cir", pin_map=pin_map)
+        assert result.pin_map["pad"] == PinRole.PAD
+        assert result.pin_map["en"] == PinRole.ENABLE
+
+    def test_parse_no_pin_map_by_default(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "buf_io.cir")
+        assert result.pin_map == {}
+
+
+class TestGetParser:
+    def test_get_spectre_parser(self):
+        parser = get_parser("spectre")
+        assert isinstance(parser, SpiceParser)
+
+    def test_get_ngspice_parser(self):
+        parser = get_parser("ngspice")
+        assert isinstance(parser, NgspiceParser)
+
+    def test_default_is_spectre(self):
+        parser = get_parser()
+        assert isinstance(parser, SpiceParser)
+
+    def test_unknown_raises(self):
+        with pytest.raises(ValueError, match="Unknown simulator"):
+            get_parser("hspice")

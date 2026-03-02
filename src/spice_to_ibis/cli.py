@@ -18,8 +18,9 @@ from spice_to_ibis.deckgen import (
 from spice_to_ibis.measparser import MeasParser, MeasResult
 from spice_to_ibis.models.corners import Corner, CornerSet
 from spice_to_ibis.models.spice import PinRole, SpiceSubcircuit
-from spice_to_ibis.parser import SpiceParser
-from spice_to_ibis.runner import SpectreRunner
+from spice_to_ibis.parser import get_parser
+from spice_to_ibis.runner import get_runner
+from spice_to_ibis.syntax import get_syntax
 from spice_to_ibis.writer import write_ibis
 
 
@@ -27,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser with subcommands."""
     parser = argparse.ArgumentParser(
         prog="spice-to-ibis",
-        description="Generate IBIS models from Spectre subcircuit characterization.",
+        description=("Generate IBIS models from SPICE subcircuit characterization."),
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -38,68 +39,92 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_subcircuit_args(p_char)
     _add_corner_args(p_char)
+    _add_simulator_args(p_char)
     p_char.add_argument(
-        "--spectre-path", default="spectre", help="Path to Spectre binary"
+        "--spectre-path",
+        default=None,
+        help="Path to Spectre binary (deprecated, use --sim-path)",
     )
     p_char.add_argument(
-        "--work-dir", type=Path, default=Path("work"),
+        "--work-dir",
+        type=Path,
+        default=Path("work"),
         help="Working directory for sim files",
     )
     p_char.add_argument(
-        "--output", "-o", type=Path, required=True,
+        "--output",
+        "-o",
+        type=Path,
+        required=True,
         help="Output IBIS file path",
     )
 
     # --- generate ---
-    p_gen = sub.add_parser(
-        "generate", help="Generate simulation deck files."
-    )
+    p_gen = sub.add_parser("generate", help="Generate simulation deck files.")
     _add_subcircuit_args(p_gen)
     _add_corner_args(p_gen)
+    _add_simulator_args(p_gen)
     p_gen.add_argument(
-        "--output-dir", "-o", type=Path, required=True,
+        "--output-dir",
+        "-o",
+        type=Path,
+        required=True,
         help="Directory for generated deck files",
     )
 
     # --- simulate ---
-    p_sim = sub.add_parser(
-        "simulate", help="Run Spectre on generated decks."
+    p_sim = sub.add_parser("simulate", help="Run simulator on generated decks.")
+    p_sim.add_argument(
+        "--deck-dir",
+        type=Path,
+        required=True,
+        help="Directory containing deck files",
+    )
+    _add_simulator_args(p_sim)
+    p_sim.add_argument(
+        "--spectre-path",
+        default=None,
+        help="Path to Spectre binary (deprecated, use --sim-path)",
     )
     p_sim.add_argument(
-        "--deck-dir", type=Path, required=True,
-        help="Directory containing .scs deck files",
-    )
-    p_sim.add_argument(
-        "--spectre-path", default="spectre", help="Path to Spectre binary"
-    )
-    p_sim.add_argument(
-        "--work-dir", type=Path, default=Path("work"),
+        "--work-dir",
+        type=Path,
+        default=Path("work"),
         help="Working directory for simulation results",
     )
 
     # --- parse-results ---
     p_parse = sub.add_parser(
-        "parse-results", help="Parse Spectre output into results JSON."
+        "parse-results", help="Parse simulation output into results JSON."
     )
     p_parse.add_argument(
-        "--work-dir", type=Path, required=True,
+        "--work-dir",
+        type=Path,
+        required=True,
         help="Working directory with simulation output",
     )
+    _add_simulator_args(p_parse)
     p_parse.add_argument(
-        "--output", "-o", type=Path, required=True,
+        "--output",
+        "-o",
+        type=Path,
+        required=True,
         help="Output results JSON path",
     )
 
     # --- write-ibis ---
-    p_write = sub.add_parser(
-        "write-ibis", help="Write IBIS file from results JSON."
-    )
+    p_write = sub.add_parser("write-ibis", help="Write IBIS file from results JSON.")
     p_write.add_argument(
-        "--results", type=Path, required=True,
+        "--results",
+        type=Path,
+        required=True,
         help="Path to results JSON",
     )
     p_write.add_argument(
-        "--output", "-o", type=Path, required=True,
+        "--output",
+        "-o",
+        type=Path,
+        required=True,
         help="Output IBIS file path",
     )
 
@@ -108,34 +133,62 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _add_subcircuit_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--subcircuit", type=Path, required=True,
-        help="Path to Spectre .scs subcircuit file",
+        "--subcircuit",
+        type=Path,
+        required=True,
+        help="Path to subcircuit file (.scs or .cir)",
     )
     parser.add_argument(
-        "--pin-map", type=str, required=True,
+        "--pin-map",
+        type=str,
+        required=True,
         help="Pin-to-role mapping: pad=pad,vdd=vdd,vss=vss,din=input,en=enable",
     )
 
 
 def _add_corner_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--vdd-typ", type=float, default=1.8, help="Typical VDD (V)"
-    )
-    parser.add_argument(
-        "--vdd-min", type=float, default=1.62, help="Min VDD (V)"
-    )
-    parser.add_argument(
-        "--vdd-max", type=float, default=1.98, help="Max VDD (V)"
-    )
+    parser.add_argument("--vdd-typ", type=float, default=1.8, help="Typical VDD (V)")
+    parser.add_argument("--vdd-min", type=float, default=1.62, help="Min VDD (V)")
+    parser.add_argument("--vdd-max", type=float, default=1.98, help="Max VDD (V)")
     parser.add_argument(
         "--temp-typ", type=float, default=25.0, help="Typical temperature (C)"
     )
     parser.add_argument(
-        "--temp-min", type=float, default=125.0, help="Min corner temperature (C)"
+        "--temp-min",
+        type=float,
+        default=125.0,
+        help="Min corner temperature (C)",
     )
     parser.add_argument(
-        "--temp-max", type=float, default=-40.0, help="Max corner temperature (C)"
+        "--temp-max",
+        type=float,
+        default=-40.0,
+        help="Max corner temperature (C)",
     )
+
+
+def _add_simulator_args(parser: argparse.ArgumentParser) -> None:
+    """Add --simulator and --sim-path arguments."""
+    parser.add_argument(
+        "--simulator",
+        choices=["spectre", "ngspice"],
+        default="spectre",
+        help="Simulator backend (default: spectre)",
+    )
+    parser.add_argument(
+        "--sim-path",
+        default=None,
+        help="Path to simulator binary",
+    )
+
+
+def _resolve_sim_path(args: argparse.Namespace) -> str | None:
+    """Resolve simulator path from --sim-path or legacy --spectre-path."""
+    if args.sim_path is not None:
+        return args.sim_path
+    if hasattr(args, "spectre_path") and args.spectre_path is not None:
+        return args.spectre_path
+    return None
 
 
 def _parse_pin_map(pin_map_str: str) -> dict[str, PinRole]:
@@ -157,18 +210,20 @@ def _build_corners(args: argparse.Namespace) -> CornerSet:
 
 def _parse_subcircuit(args: argparse.Namespace) -> SpiceSubcircuit:
     pin_map = _parse_pin_map(args.pin_map)
-    parser = SpiceParser()
+    simulator = getattr(args, "simulator", "spectre")
+    parser = get_parser(simulator)
     return parser.parse(args.subcircuit, pin_map=pin_map)
 
 
-def _generate_decks(subcircuit, corners):
+def _generate_decks(subcircuit, corners, simulator="spectre"):
     """Generate all simulation decks for all corners."""
+    syntax = get_syntax(simulator)
     generators = [
-        PulldownDeckGen(),
-        PullupDeckGen(),
-        ClampDeckGen(),
-        RisingWaveformDeckGen(),
-        FallingWaveformDeckGen(),
+        PulldownDeckGen(syntax=syntax),
+        PullupDeckGen(syntax=syntax),
+        ClampDeckGen(syntax=syntax),
+        RisingWaveformDeckGen(syntax=syntax),
+        FallingWaveformDeckGen(syntax=syntax),
     ]
     decks = []
     for corner in corners:
@@ -181,9 +236,10 @@ def cmd_generate(args: argparse.Namespace) -> None:
     """Generate simulation deck files."""
     subcircuit = _parse_subcircuit(args)
     corners = _build_corners(args)
-    decks = _generate_decks(subcircuit, corners)
+    simulator = args.simulator
+    decks = _generate_decks(subcircuit, corners, simulator=simulator)
 
-    runner = SpectreRunner()
+    runner = get_runner(simulator, path=_resolve_sim_path(args))
     output_dir = Path(args.output_dir)
     for deck in decks:
         path = runner.write_deck(deck, output_dir)
@@ -193,23 +249,24 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
 
 def cmd_simulate(args: argparse.Namespace) -> None:
-    """Run Spectre on all deck files in a directory."""
+    """Run simulator on all deck files in a directory."""
     deck_dir = Path(args.deck_dir)
     work_dir = Path(args.work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    runner = SpectreRunner(spectre_path=args.spectre_path)
+    simulator = args.simulator
+    runner = get_runner(simulator, path=_resolve_sim_path(args))
 
     from spice_to_ibis.deckgen.base import SimDeck
 
-    scs_files = sorted(deck_dir.glob("*.scs"))
-    if not scs_files:
-        print(f"No .scs files found in {deck_dir}", file=sys.stderr)
+    ext = "*.cir" if simulator == "ngspice" else "*.scs"
+    deck_files = sorted(deck_dir.glob(ext))
+    if not deck_files:
+        print(f"No {ext} files found in {deck_dir}", file=sys.stderr)
         sys.exit(1)
 
-    for scs_file in scs_files:
-        name = scs_file.stem
-        # Infer deck_type and corner from filename pattern: type_process_voltV_tempC
+    for deck_file in deck_files:
+        name = deck_file.stem
         parts = name.split("_", 1)
         deck_type = parts[0] if parts else "unknown"
         corner = Corner("unknown", "tt", 1.8, 25.0)
@@ -218,7 +275,7 @@ def cmd_simulate(args: argparse.Namespace) -> None:
             name=name,
             deck_type=deck_type,
             corner=corner,
-            content=scs_file.read_text(),
+            content=deck_file.read_text(),
         )
         result = runner.run(deck, work_dir)
         status = "OK" if result.success else "FAIL"
@@ -228,16 +285,35 @@ def cmd_simulate(args: argparse.Namespace) -> None:
 def cmd_parse_results(args: argparse.Namespace) -> None:
     """Parse simulation results into JSON."""
     work_dir = Path(args.work_dir)
+    simulator = args.simulator
     meas_parser = MeasParser()
 
     results_data: list[dict] = []
 
-    for mt0_file in sorted(work_dir.glob("*.mt0")):
-        measurements = meas_parser.parse_mt0(mt0_file)
-        results_data.append({
-            "file": str(mt0_file),
-            "measurements": measurements,
-        })
+    if simulator == "ngspice":
+        for raw_file in sorted(work_dir.glob("*.raw")):
+            deck_name = raw_file.stem
+            log_file = work_dir / f"{deck_name}.log"
+            # Try DC sweep first
+            voltages, currents = meas_parser.parse_ngspice_raw(raw_file)
+            entry: dict = {
+                "file": str(raw_file),
+                "deck_name": deck_name,
+                "voltages": len(voltages),
+            }
+            if log_file.exists():
+                measurements = meas_parser.parse_ngspice_meas_log(log_file)
+                entry["measurements"] = measurements
+            results_data.append(entry)
+    else:
+        for mt0_file in sorted(work_dir.glob("*.mt0")):
+            measurements = meas_parser.parse_mt0(mt0_file)
+            results_data.append(
+                {
+                    "file": str(mt0_file),
+                    "measurements": measurements,
+                }
+            )
 
     output = Path(args.output)
     output.write_text(json.dumps(results_data, indent=2))
@@ -265,15 +341,16 @@ def cmd_characterize(args: argparse.Namespace) -> None:
     """End-to-end characterization pipeline."""
     subcircuit = _parse_subcircuit(args)
     corners = _build_corners(args)
+    simulator = args.simulator
     work_dir = Path(args.work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Generate decks
-    decks = _generate_decks(subcircuit, corners)
+    decks = _generate_decks(subcircuit, corners, simulator=simulator)
     print(f"Generated {len(decks)} simulation decks")
 
     # 2. Run simulations
-    runner = SpectreRunner(spectre_path=args.spectre_path)
+    runner = get_runner(simulator, path=_resolve_sim_path(args))
     sim_results = runner.run_all(decks, work_dir)
 
     failed = [r for r in sim_results if not r.success]
@@ -298,27 +375,14 @@ def cmd_characterize(args: argparse.Namespace) -> None:
             if sim_result.deck.corner.label != corner.label:
                 continue
             deck = sim_result.deck
-            if deck.deck_type in ("pulldown", "pullup", "clamp"):
-                # Look for DC sweep PSF data
-                dc_file = sim_result.raw_dir / "dc_sweep.dc"
-                if dc_file.exists():
-                    mr = meas_parser.parse_dc_sweep(
-                        dc_file, deck.name, corner.label
-                    )
-                    mr.deck_type = deck.deck_type
-                    corner_results.append(mr)
-            elif deck.deck_type in ("rising", "falling"):
-                tran_file = sim_result.raw_dir / "tran_sim.tran"
-                mt0_file = sim_result.work_dir / f"{deck.name}.mt0"
-                if tran_file.exists():
-                    mr = meas_parser.parse_transient(
-                        tran_file,
-                        mt0_file if mt0_file.exists() else None,
-                        deck.name,
-                        corner.label,
-                    )
-                    mr.deck_type = deck.deck_type
-                    corner_results.append(mr)
+            if simulator == "ngspice":
+                _parse_ngspice_result(
+                    meas_parser, sim_result, deck, corner, corner_results
+                )
+            else:
+                _parse_spectre_result(
+                    meas_parser, sim_result, deck, corner, corner_results
+                )
         results[corner.label] = corner_results
 
     # 4. Convert to IBIS
@@ -327,6 +391,49 @@ def cmd_characterize(args: argparse.Namespace) -> None:
     # 5. Write IBIS
     write_ibis(ibis_model, Path(args.output))
     print(f"Wrote IBIS file to {args.output}")
+
+
+def _parse_spectre_result(meas_parser, sim_result, deck, corner, corner_results):
+    """Parse Spectre simulation results."""
+    if deck.deck_type in ("pulldown", "pullup", "clamp"):
+        dc_file = sim_result.raw_dir / "dc_sweep.dc"
+        if dc_file.exists():
+            mr = meas_parser.parse_dc_sweep(dc_file, deck.name, corner.label)
+            mr.deck_type = deck.deck_type
+            corner_results.append(mr)
+    elif deck.deck_type in ("rising", "falling"):
+        tran_file = sim_result.raw_dir / "tran_sim.tran"
+        mt0_file = sim_result.work_dir / f"{deck.name}.mt0"
+        if tran_file.exists():
+            mr = meas_parser.parse_transient(
+                tran_file,
+                mt0_file if mt0_file.exists() else None,
+                deck.name,
+                corner.label,
+            )
+            mr.deck_type = deck.deck_type
+            corner_results.append(mr)
+
+
+def _parse_ngspice_result(meas_parser, sim_result, deck, corner, corner_results):
+    """Parse NgSPICE simulation results."""
+    raw_file = sim_result.raw_file
+    log_file = sim_result.log_path
+    if deck.deck_type in ("pulldown", "pullup", "clamp"):
+        if raw_file.exists():
+            mr = meas_parser.parse_dc_sweep_ngspice(raw_file, deck.name, corner.label)
+            mr.deck_type = deck.deck_type
+            corner_results.append(mr)
+    elif deck.deck_type in ("rising", "falling"):
+        if raw_file.exists():
+            mr = meas_parser.parse_transient_ngspice(
+                raw_file,
+                log_file if log_file.exists() else None,
+                deck.name,
+                corner.label,
+            )
+            mr.deck_type = deck.deck_type
+            corner_results.append(mr)
 
 
 def main(argv: list[str] | None = None) -> None:

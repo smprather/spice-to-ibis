@@ -16,6 +16,7 @@ from spice_to_ibis.deckgen.transient import (
 )
 from spice_to_ibis.models.corners import Corner
 from spice_to_ibis.models.spice import PinRole, SpiceSubcircuit
+from spice_to_ibis.syntax import NgspiceSyntax
 
 
 @pytest.fixture
@@ -206,3 +207,108 @@ class TestAllDeckGenerators:
             deck = gen.generate(subcircuit, typ_corner)
             assert len(deck.content) > 100
             assert "simulator lang=spectre" in deck.content
+
+
+class TestNgspiceDeckGen:
+    """Test NgSPICE deck generation for all 5 deck types."""
+
+    @pytest.fixture
+    def ng_syntax(self):
+        return NgspiceSyntax()
+
+    def test_pulldown_ngspice_header(self, subcircuit, typ_corner, ng_syntax):
+        gen = PulldownDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "* Auto-generated pulldown deck" in deck.content
+        assert "simulator lang" not in deck.content
+
+    def test_pulldown_ngspice_sources(self, subcircuit, typ_corner, ng_syntax):
+        gen = PulldownDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "V_vdd vdd 0 DC 1.8" in deck.content
+        assert "V_vss vss 0 DC 0" in deck.content
+        assert "V_din din 0 DC 0" in deck.content
+        assert "V_en en 0 DC 1.8" in deck.content
+
+    def test_pulldown_ngspice_instance(self, subcircuit, typ_corner, ng_syntax):
+        gen = PulldownDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "X_dut pad vdd vss din en buf_io" in deck.content
+
+    def test_pulldown_ngspice_dc_sweep(self, subcircuit, typ_corner, ng_syntax):
+        gen = PulldownDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert ".dc V_pad -1.8 3.6 0.018" in deck.content
+
+    def test_pulldown_ngspice_control_block(self, subcircuit, typ_corner, ng_syntax):
+        gen = PulldownDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert ".control" in deck.content
+        assert "run" in deck.content
+        assert ".endc" in deck.content
+        assert ".end" in deck.content
+
+    def test_pulldown_ngspice_include(self, subcircuit, typ_corner, ng_syntax):
+        gen = PulldownDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert '.include "models/nmos.scs"' in deck.content
+
+    def test_pullup_ngspice(self, subcircuit, typ_corner, ng_syntax):
+        gen = PullupDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "V_din din 0 DC 1.8" in deck.content
+        assert ".dc V_pad" in deck.content
+
+    def test_clamp_ngspice(self, subcircuit, typ_corner, ng_syntax):
+        gen = ClampDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "V_en en 0 DC 0" in deck.content
+        assert ".dc V_pad" in deck.content
+
+    def test_rising_ngspice_pulse(self, subcircuit, typ_corner, ng_syntax):
+        gen = RisingWaveformDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "V_din din 0 PULSE(0 1.8" in deck.content
+
+    def test_rising_ngspice_resistor(self, subcircuit, typ_corner, ng_syntax):
+        gen = RisingWaveformDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "R_fix pad v_fix 50" in deck.content
+
+    def test_rising_ngspice_transient(self, subcircuit, typ_corner, ng_syntax):
+        gen = RisingWaveformDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert ".tran" in deck.content
+
+    def test_rising_ngspice_meas(self, subcircuit, typ_corner, ng_syntax):
+        gen = RisingWaveformDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert ".meas tran t20_rise WHEN" in deck.content
+        assert ".meas tran t80_rise WHEN" in deck.content
+        assert "RISE=1" in deck.content
+
+    def test_falling_ngspice_pulse(self, subcircuit, typ_corner, ng_syntax):
+        gen = FallingWaveformDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert "V_din din 0 PULSE(1.8 0" in deck.content
+
+    def test_falling_ngspice_meas(self, subcircuit, typ_corner, ng_syntax):
+        gen = FallingWaveformDeckGen(syntax=ng_syntax)
+        deck = gen.generate(subcircuit, typ_corner)
+        assert ".meas tran t80_fall WHEN" in deck.content
+        assert ".meas tran t20_fall WHEN" in deck.content
+        assert "FALL=1" in deck.content
+
+    def test_all_ngspice_decks(self, subcircuit, typ_corner, ng_syntax):
+        generators = [
+            PulldownDeckGen(syntax=ng_syntax),
+            PullupDeckGen(syntax=ng_syntax),
+            ClampDeckGen(syntax=ng_syntax),
+            RisingWaveformDeckGen(syntax=ng_syntax),
+            FallingWaveformDeckGen(syntax=ng_syntax),
+        ]
+        for gen in generators:
+            deck = gen.generate(subcircuit, typ_corner)
+            assert len(deck.content) > 100
+            assert ".end" in deck.content
+            assert "simulator lang" not in deck.content

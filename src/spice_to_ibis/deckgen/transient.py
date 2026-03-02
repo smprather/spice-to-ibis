@@ -5,12 +5,13 @@ from __future__ import annotations
 from spice_to_ibis.deckgen.base import DeckGenerator, SimDeck
 from spice_to_ibis.models.corners import Corner
 from spice_to_ibis.models.spice import SpiceSubcircuit
+from spice_to_ibis.syntax import SimSyntax
 
 
 class RisingWaveformDeckGen(DeckGenerator):
     """Generate transient deck for rising waveform.
 
-    Stimulus: din pulse LOW→HIGH, R_fix=50Ω to VDD/2.
+    Stimulus: din pulse LOW->HIGH, R_fix=50Ohm to VDD/2.
     Measures V(pad) vs time + 20%/80% crossing times.
     """
 
@@ -18,10 +19,12 @@ class RisingWaveformDeckGen(DeckGenerator):
 
     def __init__(
         self,
+        syntax: SimSyntax | None = None,
         r_fixture: float = 50.0,
         t_rise: float = 0.2e-9,
         t_sim: float = 20e-9,
     ):
+        super().__init__(syntax)
         self.r_fixture = r_fixture
         self.t_rise = t_rise
         self.t_sim = t_sim
@@ -46,39 +49,56 @@ class RisingWaveformDeckGen(DeckGenerator):
         content += "\n"
 
         # Instantiate DUT
-        ports = " ".join(subcircuit.ports)
-        content += f"x_dut ({ports}) {subcircuit.name}\n\n"
+        content += (
+            self.syntax.subcircuit_instance("x_dut", subcircuit.ports, subcircuit.name)
+            + "\n\n"
+        )
 
         # Power supplies
         content += self._supply_sources(subcircuit, corner)
 
         # Enable HIGH
-        content += f"v_en ({en_pin} 0) vsource dc={vdd}\n\n"
+        content += self.syntax.voltage_source("v_en", en_pin, "0", vdd) + "\n\n"
 
-        # Input pulse LOW→HIGH
+        # Input pulse LOW->HIGH
         content += (
-            f"v_din ({din_pin} 0) vsource type=pulse "
-            f"val0=0 val1={vdd} "
-            f"delay=1n rise={self.t_rise} fall={self.t_rise} "
-            f"width={self.t_sim / 2} period={self.t_sim}\n\n"
+            self.syntax.pulse_source(
+                "v_din",
+                din_pin,
+                "0",
+                val0=0,
+                val1=vdd,
+                delay="1n",
+                rise=self.t_rise,
+                fall=self.t_rise,
+                width=self.t_sim / 2,
+                period=self.t_sim,
+            )
+            + "\n\n"
         )
 
         # Load: R_fixture to V_fixture
-        content += f"r_fix ({pad_pin} v_fix) resistor r={self.r_fixture}\n"
-        content += f"v_fix_src (v_fix 0) vsource dc={v_fixture}\n\n"
+        content += (
+            self.syntax.resistor("r_fix", pad_pin, "v_fix", self.r_fixture) + "\n"
+        )
+        content += (
+            self.syntax.voltage_source("v_fix_src", "v_fix", "0", v_fixture) + "\n\n"
+        )
 
         # Transient analysis
-        content += f"tran_sim tran stop={self.t_sim}\n\n"
+        content += self.syntax.transient(self.t_sim) + "\n\n"
 
         # Measurement statements
         content += (
-            f"meas_t20 tran_sim cross sig=v_pad dir=rise val={v_20} "
-            f"name=t20_rise\n"
+            self.syntax.meas_cross("meas_t20", "v_pad", "rise", v_20, "t20_rise") + "\n"
         )
         content += (
-            f"meas_t80 tran_sim cross sig=v_pad dir=rise val={v_80} "
-            f"name=t80_rise\n"
+            self.syntax.meas_cross("meas_t80", "v_pad", "rise", v_80, "t80_rise") + "\n"
         )
+
+        # Control block and end (non-empty for NgSPICE)
+        content += self.syntax.control_block(f"rising_{corner.suffix}")
+        content += self.syntax.end_statement()
 
         name = f"rising_{corner.suffix}"
         expected = ["t20_rise", "t80_rise"]
@@ -94,7 +114,7 @@ class RisingWaveformDeckGen(DeckGenerator):
 class FallingWaveformDeckGen(DeckGenerator):
     """Generate transient deck for falling waveform.
 
-    Stimulus: din pulse HIGH→LOW, R_fix=50Ω to VDD/2.
+    Stimulus: din pulse HIGH->LOW, R_fix=50Ohm to VDD/2.
     Measures V(pad) vs time + 80%/20% crossing times.
     """
 
@@ -102,10 +122,12 @@ class FallingWaveformDeckGen(DeckGenerator):
 
     def __init__(
         self,
+        syntax: SimSyntax | None = None,
         r_fixture: float = 50.0,
         t_rise: float = 0.2e-9,
         t_sim: float = 20e-9,
     ):
+        super().__init__(syntax)
         self.r_fixture = r_fixture
         self.t_rise = t_rise
         self.t_sim = t_sim
@@ -130,39 +152,56 @@ class FallingWaveformDeckGen(DeckGenerator):
         content += "\n"
 
         # Instantiate DUT
-        ports = " ".join(subcircuit.ports)
-        content += f"x_dut ({ports}) {subcircuit.name}\n\n"
+        content += (
+            self.syntax.subcircuit_instance("x_dut", subcircuit.ports, subcircuit.name)
+            + "\n\n"
+        )
 
         # Power supplies
         content += self._supply_sources(subcircuit, corner)
 
         # Enable HIGH
-        content += f"v_en ({en_pin} 0) vsource dc={vdd}\n\n"
+        content += self.syntax.voltage_source("v_en", en_pin, "0", vdd) + "\n\n"
 
-        # Input pulse HIGH→LOW
+        # Input pulse HIGH->LOW
         content += (
-            f"v_din ({din_pin} 0) vsource type=pulse "
-            f"val0={vdd} val1=0 "
-            f"delay=1n rise={self.t_rise} fall={self.t_rise} "
-            f"width={self.t_sim / 2} period={self.t_sim}\n\n"
+            self.syntax.pulse_source(
+                "v_din",
+                din_pin,
+                "0",
+                val0=vdd,
+                val1=0,
+                delay="1n",
+                rise=self.t_rise,
+                fall=self.t_rise,
+                width=self.t_sim / 2,
+                period=self.t_sim,
+            )
+            + "\n\n"
         )
 
         # Load: R_fixture to V_fixture
-        content += f"r_fix ({pad_pin} v_fix) resistor r={self.r_fixture}\n"
-        content += f"v_fix_src (v_fix 0) vsource dc={v_fixture}\n\n"
+        content += (
+            self.syntax.resistor("r_fix", pad_pin, "v_fix", self.r_fixture) + "\n"
+        )
+        content += (
+            self.syntax.voltage_source("v_fix_src", "v_fix", "0", v_fixture) + "\n\n"
+        )
 
         # Transient analysis
-        content += f"tran_sim tran stop={self.t_sim}\n\n"
+        content += self.syntax.transient(self.t_sim) + "\n\n"
 
         # Measurement statements
         content += (
-            f"meas_t80 tran_sim cross sig=v_pad dir=fall val={v_80} "
-            f"name=t80_fall\n"
+            self.syntax.meas_cross("meas_t80", "v_pad", "fall", v_80, "t80_fall") + "\n"
         )
         content += (
-            f"meas_t20 tran_sim cross sig=v_pad dir=fall val={v_20} "
-            f"name=t20_fall\n"
+            self.syntax.meas_cross("meas_t20", "v_pad", "fall", v_20, "t20_fall") + "\n"
         )
+
+        # Control block and end (non-empty for NgSPICE)
+        content += self.syntax.control_block(f"falling_{corner.suffix}")
+        content += self.syntax.end_statement()
 
         name = f"falling_{corner.suffix}"
         expected = ["t80_fall", "t20_fall"]
