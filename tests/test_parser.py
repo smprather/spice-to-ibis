@@ -112,6 +112,76 @@ class TestNgspiceParser:
         assert result.pin_map == {}
 
 
+class TestParseLvdsSpectre:
+    def test_parse_extracts_name(self):
+        parser = SpiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.scs")
+        assert result.name == "lvds_driver"
+
+    def test_parse_extracts_differential_ports(self):
+        parser = SpiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.scs")
+        assert result.ports == ["outp", "outn", "vdd", "vss", "din", "en"]
+
+    def test_parse_extracts_parameters(self):
+        parser = SpiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.scs")
+        assert result.parameters == {"iref": "175u", "lmin": "180n"}
+
+    def test_parse_no_includes(self):
+        parser = SpiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.scs")
+        assert result.include_paths == []
+
+    def test_parse_with_differential_pin_map(self):
+        parser = SpiceParser()
+        pin_map = {
+            "outp": PinRole.PAD,
+            "outn": PinRole.PAD,
+            "vdd": PinRole.VDD,
+            "vss": PinRole.VSS,
+            "din": PinRole.INPUT,
+            "en": PinRole.ENABLE,
+        }
+        result = parser.parse(FIXTURES / "lvds_driver.scs", pin_map=pin_map)
+        assert result.pin_map["outp"] == PinRole.PAD
+        assert result.pin_map["outn"] == PinRole.PAD
+
+
+class TestParseLvdsNgspice:
+    def test_parse_extracts_name(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.cir")
+        assert result.name == "lvds_driver"
+
+    def test_parse_extracts_differential_ports(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.cir")
+        assert result.ports == ["outp", "outn", "vdd", "vss", "din", "en"]
+
+    def test_parse_extracts_parameters(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.cir")
+        assert result.parameters == {"iref": "175u", "lmin": "180n"}
+
+    def test_parse_no_includes(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.cir")
+        assert result.include_paths == []
+
+    def test_six_ports(self):
+        parser = NgspiceParser()
+        result = parser.parse(FIXTURES / "lvds_driver.cir")
+        assert len(result.ports) == 6
+
+    def test_ports_match_spectre_version(self):
+        sp = SpiceParser().parse(FIXTURES / "lvds_driver.scs")
+        ng = NgspiceParser().parse(FIXTURES / "lvds_driver.cir")
+        assert sp.ports == ng.ports
+        assert sp.name == ng.name
+        assert sp.parameters == ng.parameters
+
+
 class TestGetParser:
     def test_get_spectre_parser(self):
         parser = get_parser("spectre")
