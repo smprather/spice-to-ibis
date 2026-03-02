@@ -172,7 +172,7 @@ class SpectreSyntax(SimSyntax):
         result_name: str,
     ) -> str:
         return (
-            f"{meas_name} tran_sim cross sig={signal} dir={direction} "
+            f"{meas_name} tran_sim cross sig=v_{signal} dir={direction} "
             f"val={value} name={result_name}"
         )
 
@@ -257,12 +257,12 @@ class NgspiceSyntax(SimSyntax):
         step: float | int,
     ) -> str:
         ng_name = self._ngspice_name(source_name)
-        return f".dc {ng_name} {start} {stop} {step}"
+        return f".dc {ng_name} {_ng_fmt(start)} {_ng_fmt(stop)} {_ng_fmt(step)}"
 
     def transient(self, stop: float, tstep: float | None = None) -> str:
         if tstep is None:
             tstep = stop / 1000
-        return f".tran {tstep} {stop}"
+        return f".tran {_ng_fmt(tstep)} {_ng_fmt(stop)}"
 
     def meas_cross(
         self,
@@ -273,7 +273,8 @@ class NgspiceSyntax(SimSyntax):
         result_name: str,
     ) -> str:
         rise_fall = "RISE" if direction == "rise" else "FALL"
-        return f".meas tran {result_name} WHEN v({signal})={value} {rise_fall}=1"
+        val = _ng_fmt(value)
+        return f".meas tran {result_name} WHEN v({signal})={val} {rise_fall}=1"
 
     def control_block(self, deck_name: str) -> str:
         return f".control\nset filetype=ascii\nrun\nwrite {deck_name}.raw\n.endc\n"
@@ -284,6 +285,15 @@ class NgspiceSyntax(SimSyntax):
     @property
     def file_extension(self) -> str:
         return ".cir"
+
+
+def _ng_fmt(value: float | int) -> str:
+    """Format a float for NgSPICE, removing floating-point noise."""
+    if isinstance(value, int):
+        return str(value)
+    # Use repr-style g format to get clean numbers
+    formatted = f"{value:.10g}"
+    return formatted
 
 
 def get_syntax(simulator: str = "spectre") -> SimSyntax:

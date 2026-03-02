@@ -70,7 +70,7 @@ class TestSpectreSyntax:
 
     def test_meas_cross(self):
         s = SpectreSyntax()
-        result = s.meas_cross("meas_t20", "v_pad", "rise", 0.36, "t20_rise")
+        result = s.meas_cross("meas_t20", "pad", "rise", 0.36, "t20_rise")
         assert "meas_t20 tran_sim cross sig=v_pad dir=rise" in result
         assert "val=0.36 name=t20_rise" in result
 
@@ -150,17 +150,17 @@ class TestNgspiceSyntax:
     def test_transient_auto_tstep(self):
         s = NgspiceSyntax()
         result = s.transient(2e-8)
-        assert result == f".tran {2e-8 / 1000} 2e-08"
+        assert result == ".tran 2e-11 2e-08"
 
     def test_meas_cross_rise(self):
         s = NgspiceSyntax()
-        result = s.meas_cross("meas_t20", "v_pad", "rise", 0.36, "t20_rise")
-        assert result == ".meas tran t20_rise WHEN v(v_pad)=0.36 RISE=1"
+        result = s.meas_cross("meas_t20", "pad", "rise", 0.36, "t20_rise")
+        assert result == ".meas tran t20_rise WHEN v(pad)=0.36 RISE=1"
 
     def test_meas_cross_fall(self):
         s = NgspiceSyntax()
-        result = s.meas_cross("meas_t80", "v_pad", "fall", 1.44, "t80_fall")
-        assert result == ".meas tran t80_fall WHEN v(v_pad)=1.44 FALL=1"
+        result = s.meas_cross("meas_t80", "pad", "fall", 1.44, "t80_fall")
+        assert result == ".meas tran t80_fall WHEN v(pad)=1.44 FALL=1"
 
     def test_control_block(self):
         s = NgspiceSyntax()

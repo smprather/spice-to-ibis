@@ -90,10 +90,10 @@ class RisingWaveformDeckGen(DeckGenerator):
 
         # Measurement statements
         content += (
-            self.syntax.meas_cross("meas_t20", "v_pad", "rise", v_20, "t20_rise") + "\n"
+            self.syntax.meas_cross("meas_t20", pad_pin, "rise", v_20, "t20_rise") + "\n"
         )
         content += (
-            self.syntax.meas_cross("meas_t80", "v_pad", "rise", v_80, "t80_rise") + "\n"
+            self.syntax.meas_cross("meas_t80", pad_pin, "rise", v_80, "t80_rise") + "\n"
         )
 
         # Control block and end (non-empty for NgSPICE)
@@ -193,10 +193,10 @@ class FallingWaveformDeckGen(DeckGenerator):
 
         # Measurement statements
         content += (
-            self.syntax.meas_cross("meas_t80", "v_pad", "fall", v_80, "t80_fall") + "\n"
+            self.syntax.meas_cross("meas_t80", pad_pin, "fall", v_80, "t80_fall") + "\n"
         )
         content += (
-            self.syntax.meas_cross("meas_t20", "v_pad", "fall", v_20, "t20_fall") + "\n"
+            self.syntax.meas_cross("meas_t20", pad_pin, "fall", v_20, "t20_fall") + "\n"
         )
 
         # Control block and end (non-empty for NgSPICE)

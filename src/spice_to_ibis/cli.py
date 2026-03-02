@@ -208,10 +208,18 @@ def _build_corners(args: argparse.Namespace) -> CornerSet:
     )
 
 
+def _infer_parser_type(filepath: Path) -> str:
+    """Infer parser type from file extension."""
+    ext = filepath.suffix.lower()
+    if ext == ".cir":
+        return "ngspice"
+    return "spectre"
+
+
 def _parse_subcircuit(args: argparse.Namespace) -> SpiceSubcircuit:
     pin_map = _parse_pin_map(args.pin_map)
-    simulator = getattr(args, "simulator", "spectre")
-    parser = get_parser(simulator)
+    parser_type = _infer_parser_type(Path(args.subcircuit))
+    parser = get_parser(parser_type)
     return parser.parse(args.subcircuit, pin_map=pin_map)
 
 
