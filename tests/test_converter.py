@@ -186,3 +186,87 @@ class TestConvert:
         assert model.power_clamp == []
         assert model.rising_waveform == []
         assert model.falling_waveform == []
+
+
+class TestDifferentialConvert:
+    """Test converter with differential (LVDS) subcircuit."""
+
+    @pytest.fixture
+    def diff_subcircuit(self):
+        return SpiceSubcircuit(
+            name="lvds_driver",
+            ports=["outp", "outn", "vdd", "vss", "din", "en"],
+            pin_map={
+                "outp": PinRole.PAD_P,
+                "outn": PinRole.PAD_N,
+                "vdd": PinRole.VDD,
+                "vss": PinRole.VSS,
+                "din": PinRole.INPUT,
+                "en": PinRole.ENABLE,
+            },
+        )
+
+    @pytest.fixture
+    def corners(self):
+        return CornerSet(
+            typ=Corner("typ", "tt", 1.8, 25.0),
+            min=Corner("min", "ss", 1.62, 125.0),
+            max=Corner("max", "ff", 1.98, -40.0),
+        )
+
+    @staticmethod
+    def _make_diff_transient(corner_label: str, deck_type: str) -> MeasResult:
+        times = [0.0, 1e-9, 2e-9, 3e-9, 4e-9, 5e-9]
+        voltages = [-0.35, -0.2, 0.0, 0.2, 0.3, 0.35]
+        if deck_type == "falling":
+            voltages = [0.35, 0.2, 0.0, -0.2, -0.3, -0.35]
+        meas = {}
+        if deck_type == "rising":
+            meas = {"t_cross_rise": 2.0e-9}
+        elif deck_type == "falling":
+            meas = {"t_cross_fall": 2.1e-9}
+        return MeasResult(
+            deck_name=f"{deck_type}_{corner_label}",
+            deck_type=deck_type,
+            corner_label=corner_label,
+            measurements=meas,
+            waveform_time=times,
+            waveform_voltage=voltages,
+        )
+
+    def _diff_results(self) -> dict[str, list[MeasResult]]:
+        results: dict[str, list[MeasResult]] = {}
+        for label in ("typ", "min", "max"):
+            results[label] = [
+                _make_dc_result(label, "pulldown"),
+                _make_dc_result(label, "pullup"),
+                _make_clamp_result(label),
+                self._make_diff_transient(label, "rising"),
+                self._make_diff_transient(label, "falling"),
+            ]
+        return results
+
+    def test_pin_name_uses_pad_p(self, diff_subcircuit, corners):
+        model = convert(diff_subcircuit, corners, self._diff_results())
+        assert model.pin_name == "outp"
+
+    def test_component_name(self, diff_subcircuit, corners):
+        model = convert(diff_subcircuit, corners, self._diff_results())
+        assert model.component_name == "lvds_driver"
+
+    def test_ramp_rising_diff(self, diff_subcircuit, corners):
+        model = convert(diff_subcircuit, corners, self._diff_results())
+        assert model.ramp is not None
+        assert model.ramp.dt_r is not None
+        assert model.ramp.dt_r.typ == pytest.approx(2.0e-9)
+
+    def test_ramp_falling_diff(self, diff_subcircuit, corners):
+        model = convert(diff_subcircuit, corners, self._diff_results())
+        assert model.ramp is not None
+        assert model.ramp.dt_f is not None
+        assert model.ramp.dt_f.typ == pytest.approx(2.1e-9)
+
+    def test_vi_tables_still_work(self, diff_subcircuit, corners):
+        model = convert(diff_subcircuit, corners, self._diff_results())
+        assert len(model.pulldown) == 7
+        assert len(model.pullup) == 7

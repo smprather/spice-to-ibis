@@ -8,6 +8,8 @@ class PinRole(enum.Enum):
     """Role of a subcircuit port in an I/O buffer."""
 
     PAD = "pad"
+    PAD_P = "pad_p"
+    PAD_N = "pad_n"
     VDD = "vdd"
     VSS = "vss"
     INPUT = "input"

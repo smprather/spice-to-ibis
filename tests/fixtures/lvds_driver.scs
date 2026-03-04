@@ -20,6 +20,9 @@
 
 simulator lang=spectre
 
+include "models/nmos.scs" section=tt
+include "models/pmos.scs" section=tt
+
 subckt lvds_driver (outp outn vdd vss din en)
 parameters iref=175u lmin=180n
 

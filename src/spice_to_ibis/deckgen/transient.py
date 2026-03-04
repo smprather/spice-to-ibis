@@ -13,6 +13,9 @@ class RisingWaveformDeckGen(DeckGenerator):
 
     Stimulus: din pulse LOW->HIGH, R_fix=50Ohm to VDD/2.
     Measures V(pad) vs time + 20%/80% crossing times.
+
+    For differential subcircuits, uses R_diff (2*R_fixture) between pad_p and
+    pad_n, and measures differential zero crossing instead of per-pin thresholds.
     """
 
     deck_type = "rising"
@@ -35,13 +38,13 @@ class RisingWaveformDeckGen(DeckGenerator):
         corner: Corner,
     ) -> SimDeck:
         vdd = corner.voltage
-        pad_pin = self._find_pin(subcircuit, "pad")
+        diff = self._is_differential(subcircuit)
+        if diff:
+            pad_p, pad_n = self._diff_pad_pins(subcircuit)
+        else:
+            pad_p = self._find_pin(subcircuit, "pad")
         din_pin = self._find_pin(subcircuit, "input")
         en_pin = self._find_pin(subcircuit, "enable")
-
-        v_fixture = vdd / 2
-        v_20 = vdd * 0.2
-        v_80 = vdd * 0.8
 
         content = self._header(corner)
         content += self._global_options()
@@ -77,31 +80,63 @@ class RisingWaveformDeckGen(DeckGenerator):
             + "\n\n"
         )
 
-        # Load: R_fixture to V_fixture
-        content += (
-            self.syntax.resistor("r_fix", pad_pin, "v_fix", self.r_fixture) + "\n"
-        )
-        content += (
-            self.syntax.voltage_source("v_fix_src", "v_fix", "0", v_fixture) + "\n\n"
-        )
+        if diff:
+            # Differential load: R_diff between pad_p and pad_n
+            r_diff = 2 * self.r_fixture
+            content += (
+                self.syntax.resistor("r_diff", pad_p, pad_n, r_diff) + "\n"
+            )
+            # Behavioral source to probe differential voltage
+            probe = self.syntax.diff_probe(pad_p, pad_n)
+            if probe:
+                content += probe + "\n"
+            content += "\n"
+        else:
+            # Single-ended load: R_fixture to V_fixture (VDD/2)
+            v_fixture = vdd / 2
+            content += (
+                self.syntax.resistor("r_fix", pad_p, "v_fix", self.r_fixture)
+                + "\n"
+            )
+            content += (
+                self.syntax.voltage_source("v_fix_src", "v_fix", "0", v_fixture)
+                + "\n\n"
+            )
 
         # Transient analysis
         content += self.syntax.transient(self.t_sim) + "\n\n"
 
         # Measurement statements
-        content += (
-            self.syntax.meas_cross("meas_t20", pad_pin, "rise", v_20, "t20_rise") + "\n"
-        )
-        content += (
-            self.syntax.meas_cross("meas_t80", pad_pin, "rise", v_80, "t80_rise") + "\n"
-        )
+        if diff:
+            content += (
+                self.syntax.meas_cross_diff(
+                    "meas_t_cross", pad_p, pad_n, "rise", 0.0, "t_cross_rise"
+                )
+                + "\n"
+            )
+            expected = ["t_cross_rise"]
+        else:
+            v_20 = vdd * 0.2
+            v_80 = vdd * 0.8
+            content += (
+                self.syntax.meas_cross(
+                    "meas_t20", pad_p, "rise", v_20, "t20_rise"
+                )
+                + "\n"
+            )
+            content += (
+                self.syntax.meas_cross(
+                    "meas_t80", pad_p, "rise", v_80, "t80_rise"
+                )
+                + "\n"
+            )
+            expected = ["t20_rise", "t80_rise"]
 
         # Control block and end (non-empty for NgSPICE)
         content += self.syntax.control_block(f"rising_{corner.suffix}")
         content += self.syntax.end_statement()
 
         name = f"rising_{corner.suffix}"
-        expected = ["t20_rise", "t80_rise"]
         return SimDeck(
             name=name,
             deck_type=self.deck_type,
@@ -116,6 +151,9 @@ class FallingWaveformDeckGen(DeckGenerator):
 
     Stimulus: din pulse HIGH->LOW, R_fix=50Ohm to VDD/2.
     Measures V(pad) vs time + 80%/20% crossing times.
+
+    For differential subcircuits, uses R_diff (2*R_fixture) between pad_p and
+    pad_n, and measures differential zero crossing instead of per-pin thresholds.
     """
 
     deck_type = "falling"
@@ -138,13 +176,13 @@ class FallingWaveformDeckGen(DeckGenerator):
         corner: Corner,
     ) -> SimDeck:
         vdd = corner.voltage
-        pad_pin = self._find_pin(subcircuit, "pad")
+        diff = self._is_differential(subcircuit)
+        if diff:
+            pad_p, pad_n = self._diff_pad_pins(subcircuit)
+        else:
+            pad_p = self._find_pin(subcircuit, "pad")
         din_pin = self._find_pin(subcircuit, "input")
         en_pin = self._find_pin(subcircuit, "enable")
-
-        v_fixture = vdd / 2
-        v_80 = vdd * 0.8
-        v_20 = vdd * 0.2
 
         content = self._header(corner)
         content += self._global_options()
@@ -180,31 +218,63 @@ class FallingWaveformDeckGen(DeckGenerator):
             + "\n\n"
         )
 
-        # Load: R_fixture to V_fixture
-        content += (
-            self.syntax.resistor("r_fix", pad_pin, "v_fix", self.r_fixture) + "\n"
-        )
-        content += (
-            self.syntax.voltage_source("v_fix_src", "v_fix", "0", v_fixture) + "\n\n"
-        )
+        if diff:
+            # Differential load: R_diff between pad_p and pad_n
+            r_diff = 2 * self.r_fixture
+            content += (
+                self.syntax.resistor("r_diff", pad_p, pad_n, r_diff) + "\n"
+            )
+            # Behavioral source to probe differential voltage
+            probe = self.syntax.diff_probe(pad_p, pad_n)
+            if probe:
+                content += probe + "\n"
+            content += "\n"
+        else:
+            # Single-ended load: R_fixture to V_fixture (VDD/2)
+            v_fixture = vdd / 2
+            content += (
+                self.syntax.resistor("r_fix", pad_p, "v_fix", self.r_fixture)
+                + "\n"
+            )
+            content += (
+                self.syntax.voltage_source("v_fix_src", "v_fix", "0", v_fixture)
+                + "\n\n"
+            )
 
         # Transient analysis
         content += self.syntax.transient(self.t_sim) + "\n\n"
 
         # Measurement statements
-        content += (
-            self.syntax.meas_cross("meas_t80", pad_pin, "fall", v_80, "t80_fall") + "\n"
-        )
-        content += (
-            self.syntax.meas_cross("meas_t20", pad_pin, "fall", v_20, "t20_fall") + "\n"
-        )
+        if diff:
+            content += (
+                self.syntax.meas_cross_diff(
+                    "meas_t_cross", pad_p, pad_n, "fall", 0.0, "t_cross_fall"
+                )
+                + "\n"
+            )
+            expected = ["t_cross_fall"]
+        else:
+            v_80 = vdd * 0.8
+            v_20 = vdd * 0.2
+            content += (
+                self.syntax.meas_cross(
+                    "meas_t80", pad_p, "fall", v_80, "t80_fall"
+                )
+                + "\n"
+            )
+            content += (
+                self.syntax.meas_cross(
+                    "meas_t20", pad_p, "fall", v_20, "t20_fall"
+                )
+                + "\n"
+            )
+            expected = ["t80_fall", "t20_fall"]
 
         # Control block and end (non-empty for NgSPICE)
         content += self.syntax.control_block(f"falling_{corner.suffix}")
         content += self.syntax.end_statement()
 
         name = f"falling_{corner.suffix}"
-        expected = ["t80_fall", "t20_fall"]
         return SimDeck(
             name=name,
             deck_type=self.deck_type,

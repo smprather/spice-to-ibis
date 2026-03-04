@@ -128,10 +128,11 @@ class TestParseLvdsSpectre:
         result = parser.parse(FIXTURES / "lvds_driver.scs")
         assert result.parameters == {"iref": "175u", "lmin": "180n"}
 
-    def test_parse_no_includes(self):
+    def test_parse_includes(self):
         parser = SpiceParser()
         result = parser.parse(FIXTURES / "lvds_driver.scs")
-        assert result.include_paths == []
+        assert "models/nmos.scs" in result.include_paths
+        assert "models/pmos.scs" in result.include_paths
 
     def test_parse_with_differential_pin_map(self):
         parser = SpiceParser()
@@ -164,10 +165,11 @@ class TestParseLvdsNgspice:
         result = parser.parse(FIXTURES / "lvds_driver.cir")
         assert result.parameters == {"iref": "175u", "lmin": "180n"}
 
-    def test_parse_no_includes(self):
+    def test_parse_includes(self):
         parser = NgspiceParser()
         result = parser.parse(FIXTURES / "lvds_driver.cir")
-        assert result.include_paths == []
+        assert "models/nmos.cir" in result.include_paths
+        assert "models/pmos.cir" in result.include_paths
 
     def test_six_ports(self):
         parser = NgspiceParser()

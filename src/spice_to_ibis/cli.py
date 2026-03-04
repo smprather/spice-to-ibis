@@ -15,11 +15,12 @@ from spice_to_ibis.deckgen import (
     PullupDeckGen,
     RisingWaveformDeckGen,
 )
+from spice_to_ibis.deckgen.base import SimDeck
 from spice_to_ibis.measparser import MeasParser, MeasResult
 from spice_to_ibis.models.corners import Corner, CornerSet
 from spice_to_ibis.models.spice import PinRole, SpiceSubcircuit
 from spice_to_ibis.parser import get_parser
-from spice_to_ibis.runner import get_runner
+from spice_to_ibis.runner import SimResult, get_runner
 from spice_to_ibis.syntax import get_syntax
 from spice_to_ibis.writer import write_ibis
 
@@ -223,7 +224,11 @@ def _parse_subcircuit(args: argparse.Namespace) -> SpiceSubcircuit:
     return parser.parse(args.subcircuit, pin_map=pin_map)
 
 
-def _generate_decks(subcircuit, corners, simulator="spectre"):
+def _generate_decks(
+    subcircuit: SpiceSubcircuit,
+    corners: CornerSet,
+    simulator: str = "spectre",
+) -> list[SimDeck]:
     """Generate all simulation decks for all corners."""
     syntax = get_syntax(simulator)
     generators = [
@@ -233,7 +238,7 @@ def _generate_decks(subcircuit, corners, simulator="spectre"):
         RisingWaveformDeckGen(syntax=syntax),
         FallingWaveformDeckGen(syntax=syntax),
     ]
-    decks = []
+    decks: list[SimDeck] = []
     for corner in corners:
         for gen in generators:
             decks.append(gen.generate(subcircuit, corner))
@@ -264,8 +269,6 @@ def cmd_simulate(args: argparse.Namespace) -> None:
 
     simulator = args.simulator
     runner = get_runner(simulator, path=_resolve_sim_path(args))
-
-    from spice_to_ibis.deckgen.base import SimDeck
 
     ext = "*.cir" if simulator == "ngspice" else "*.scs"
     deck_files = sorted(deck_dir.glob(ext))
@@ -401,7 +404,13 @@ def cmd_characterize(args: argparse.Namespace) -> None:
     print(f"Wrote IBIS file to {args.output}")
 
 
-def _parse_spectre_result(meas_parser, sim_result, deck, corner, corner_results):
+def _parse_spectre_result(
+    meas_parser: MeasParser,
+    sim_result: SimResult,
+    deck: SimDeck,
+    corner: Corner,
+    corner_results: list[MeasResult],
+) -> None:
     """Parse Spectre simulation results."""
     if deck.deck_type in ("pulldown", "pullup", "clamp"):
         dc_file = sim_result.raw_dir / "dc_sweep.dc"
@@ -423,7 +432,13 @@ def _parse_spectre_result(meas_parser, sim_result, deck, corner, corner_results)
             corner_results.append(mr)
 
 
-def _parse_ngspice_result(meas_parser, sim_result, deck, corner, corner_results):
+def _parse_ngspice_result(
+    meas_parser: MeasParser,
+    sim_result: SimResult,
+    deck: SimDeck,
+    corner: Corner,
+    corner_results: list[MeasResult],
+) -> None:
     """Parse NgSPICE simulation results."""
     raw_file = sim_result.raw_file
     log_file = sim_result.log_path

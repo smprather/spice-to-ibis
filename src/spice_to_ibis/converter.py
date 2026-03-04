@@ -77,9 +77,20 @@ def _find_pad_pin(subcircuit: SpiceSubcircuit) -> str:
     for port, role in subcircuit.pin_map.items():
         if role == PinRole.PAD:
             return port
+    # Differential: use pad_p as the primary pad pin
+    for port, role in subcircuit.pin_map.items():
+        if role == PinRole.PAD_P:
+            return port
     if "pad" in subcircuit.ports:
         return "pad"
     return subcircuit.ports[0] if subcircuit.ports else "pad"
+
+
+def _is_differential(subcircuit: SpiceSubcircuit) -> bool:
+    from spice_to_ibis.models.spice import PinRole
+
+    roles = set(subcircuit.pin_map.values())
+    return PinRole.PAD_P in roles and PinRole.PAD_N in roles
 
 
 def _build_vi_table(
@@ -228,12 +239,15 @@ def _build_ramp(
 
     vdd = corners.typ.voltage
 
-    rise_has_meas = (
+    # Single-ended: use t20/t80 thresholds; differential: use t_cross zero-crossing
+    rise_has_se = (
         rise_typ
         and "t20_rise" in rise_typ.measurements
         and "t80_rise" in rise_typ.measurements
     )
-    if rise_has_meas:
+    rise_has_diff = rise_typ and "t_cross_rise" in rise_typ.measurements
+
+    if rise_has_se:
         dv = vdd * 0.6  # 80% - 20%
 
         def _rise_dt(r: MeasResult | None) -> float:
@@ -247,13 +261,28 @@ def _build_ramp(
             min=_rise_dt(rise_min),
             max=_rise_dt(rise_max),
         )
+    elif rise_has_diff:
+        # Differential: report crossing time directly (no 20/80 threshold pair)
+        def _rise_cross(r: MeasResult | None) -> float:
+            if r and "t_cross_rise" in r.measurements:
+                return r.measurements["t_cross_rise"]
+            return 0.0
 
-    fall_has_meas = (
+        ramp.dv_r = CornerFloat(typ=vdd, min=vdd, max=vdd)
+        ramp.dt_r = CornerFloat(
+            typ=_rise_cross(rise_typ),
+            min=_rise_cross(rise_min),
+            max=_rise_cross(rise_max),
+        )
+
+    fall_has_se = (
         fall_typ
         and "t80_fall" in fall_typ.measurements
         and "t20_fall" in fall_typ.measurements
     )
-    if fall_has_meas:
+    fall_has_diff = fall_typ and "t_cross_fall" in fall_typ.measurements
+
+    if fall_has_se:
         dv = vdd * 0.6
 
         def _fall_dt(r: MeasResult | None) -> float:
@@ -266,6 +295,18 @@ def _build_ramp(
             typ=_fall_dt(fall_typ),
             min=_fall_dt(fall_min),
             max=_fall_dt(fall_max),
+        )
+    elif fall_has_diff:
+        def _fall_cross(r: MeasResult | None) -> float:
+            if r and "t_cross_fall" in r.measurements:
+                return r.measurements["t_cross_fall"]
+            return 0.0
+
+        ramp.dv_f = CornerFloat(typ=vdd, min=vdd, max=vdd)
+        ramp.dt_f = CornerFloat(
+            typ=_fall_cross(fall_typ),
+            min=_fall_cross(fall_min),
+            max=_fall_cross(fall_max),
         )
 
     return ramp

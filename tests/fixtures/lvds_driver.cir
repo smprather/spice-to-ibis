@@ -12,6 +12,9 @@
 *   - Common-mode voltage: ~1.2V (no CMFB in this version)
 *   - Nominal current: 3.5mA
 
+.include "models/nmos.cir"
+.include "models/pmos.cir"
+
 .subckt lvds_driver outp outn vdd vss din en iref=175u lmin=180n
 
 * ================================================================
@@ -30,12 +33,13 @@ Mn_einv en_b en vss vss nmos w=1u l={lmin}
 * Bias generation (ideal current source + diode-connected mirror)
 * ================================================================
 
-* PMOS reference: 175uA into diode-connected PMOS sets Vgs
-I_pref vdd pbias DC {iref}
+* PMOS reference: 175uA sunk from diode-connected PMOS sets Vgs
+* Spectre isource convention is opposite to SPICE: terminals swapped
+I_pref pbias vdd DC {iref}
 Mp_bref pbias pbias vdd vdd pmos w=3u l={lmin}
 
-* NMOS reference: 175uA through diode-connected NMOS sets Vgs
-I_nref nbias vss DC {iref}
+* NMOS reference: 175uA sourced into diode-connected NMOS sets Vgs
+I_nref vss nbias DC {iref}
 Mn_bref nbias nbias vss vss nmos w=1.5u l={lmin}
 
 * ================================================================

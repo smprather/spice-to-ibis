@@ -73,3 +73,20 @@ class DeckGenerator(abc.ABC):
         if role in subcircuit.ports:
             return role
         return role
+
+    @staticmethod
+    def _is_differential(subcircuit: SpiceSubcircuit) -> bool:
+        """Check if subcircuit has differential output pins."""
+        from spice_to_ibis.models.spice import PinRole
+
+        roles = set(subcircuit.pin_map.values())
+        return PinRole.PAD_P in roles and PinRole.PAD_N in roles
+
+    def _diff_pad_pins(
+        self, subcircuit: SpiceSubcircuit
+    ) -> tuple[str, str]:
+        """Return (pad_p_name, pad_n_name) for differential subcircuit."""
+        return (
+            self._find_pin(subcircuit, "pad_p"),
+            self._find_pin(subcircuit, "pad_n"),
+        )

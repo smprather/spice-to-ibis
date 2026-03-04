@@ -16,7 +16,7 @@ from spice_to_ibis.deckgen.transient import (
 )
 from spice_to_ibis.models.corners import Corner
 from spice_to_ibis.models.spice import PinRole, SpiceSubcircuit
-from spice_to_ibis.syntax import NgspiceSyntax
+from spice_to_ibis.syntax import NgspiceSyntax, SpectreSyntax
 
 
 @pytest.fixture
@@ -312,3 +312,130 @@ class TestNgspiceDeckGen:
             assert len(deck.content) > 100
             assert ".end" in deck.content
             assert "simulator lang" not in deck.content
+
+
+class TestDifferentialDeckGen:
+    """Test deck generation for differential (LVDS) subcircuits."""
+
+    @pytest.fixture
+    def diff_subcircuit(self):
+        return SpiceSubcircuit(
+            name="lvds_driver",
+            ports=["outp", "outn", "vdd", "vss", "din", "en"],
+            pin_map={
+                "outp": PinRole.PAD_P,
+                "outn": PinRole.PAD_N,
+                "vdd": PinRole.VDD,
+                "vss": PinRole.VSS,
+                "din": PinRole.INPUT,
+                "en": PinRole.ENABLE,
+            },
+            include_paths=["models/nmos.cir", "models/pmos.cir"],
+        )
+
+    @pytest.fixture
+    def typ_corner(self):
+        return Corner("typ", "tt", 1.8, 25.0)
+
+    def test_pulldown_holds_padn_at_vcm(self, diff_subcircuit, typ_corner):
+        gen = PulldownDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "V_pad outp 0 DC 0" in deck.content
+        assert "V_padn outn 0 DC 0.9" in deck.content
+
+    def test_pulldown_sweeps_padp(self, diff_subcircuit, typ_corner):
+        gen = PulldownDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert ".dc V_pad" in deck.content
+
+    def test_pullup_holds_padn_at_vcm(self, diff_subcircuit, typ_corner):
+        gen = PullupDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "V_padn outn 0 DC 0.9" in deck.content
+
+    def test_clamp_holds_padn_at_vcm(self, diff_subcircuit, typ_corner):
+        gen = ClampDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "V_padn outn 0 DC 0.9" in deck.content
+
+    def test_rising_diff_termination(self, diff_subcircuit, typ_corner):
+        gen = RisingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        # 2 * r_fixture(50) = 100 Ohm LVDS termination
+        assert "R_diff outp outn 100" in deck.content
+        # No single-ended fixture
+        assert "v_fix" not in deck.content
+
+    def test_rising_diff_probe(self, diff_subcircuit, typ_corner):
+        gen = RisingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "B_vdiff _vdiff 0 V=v(outp)-v(outn)" in deck.content
+
+    def test_rising_diff_meas_zero_crossing(self, diff_subcircuit, typ_corner):
+        gen = RisingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "v(_vdiff)=0" in deck.content
+        assert "RISE=1" in deck.content
+
+    def test_rising_diff_expected_measurements(self, diff_subcircuit, typ_corner):
+        gen = RisingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert deck.expected_measurements == ["t_cross_rise"]
+
+    def test_falling_diff_termination(self, diff_subcircuit, typ_corner):
+        gen = FallingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "R_diff outp outn 100" in deck.content
+
+    def test_falling_diff_probe(self, diff_subcircuit, typ_corner):
+        gen = FallingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "B_vdiff _vdiff 0 V=v(outp)-v(outn)" in deck.content
+
+    def test_falling_diff_meas_zero_crossing(self, diff_subcircuit, typ_corner):
+        gen = FallingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "v(_vdiff)=0" in deck.content
+        assert "FALL=1" in deck.content
+
+    def test_falling_diff_expected_measurements(self, diff_subcircuit, typ_corner):
+        gen = FallingWaveformDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert deck.expected_measurements == ["t_cross_fall"]
+
+    def test_diff_instance_all_ports(self, diff_subcircuit, typ_corner):
+        gen = PulldownDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "X_dut outp outn vdd vss din en lvds_driver" in deck.content
+
+    def test_diff_includes(self, diff_subcircuit, typ_corner):
+        gen = PulldownDeckGen(syntax=NgspiceSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert '.include "models/nmos.cir"' in deck.content
+        assert '.include "models/pmos.cir"' in deck.content
+
+    def test_diff_spectre_pulldown(self, diff_subcircuit, typ_corner):
+        gen = PulldownDeckGen(syntax=SpectreSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "v_padn (outn 0) vsource dc=0.9" in deck.content
+
+    def test_diff_spectre_rising(self, diff_subcircuit, typ_corner):
+        gen = RisingWaveformDeckGen(syntax=SpectreSyntax())
+        deck = gen.generate(diff_subcircuit, typ_corner)
+        assert "r_diff (outp outn) resistor r=100" in deck.content
+        assert "sig=v_outp-v_outn" in deck.content
+
+    def test_all_diff_decks(self, diff_subcircuit, typ_corner):
+        generators = [
+            PulldownDeckGen(syntax=NgspiceSyntax()),
+            PullupDeckGen(syntax=NgspiceSyntax()),
+            ClampDeckGen(syntax=NgspiceSyntax()),
+            RisingWaveformDeckGen(syntax=NgspiceSyntax()),
+            FallingWaveformDeckGen(syntax=NgspiceSyntax()),
+        ]
+        decks = [g.generate(diff_subcircuit, typ_corner) for g in generators]
+        types = {d.deck_type for d in decks}
+        assert types == {"pulldown", "pullup", "clamp", "rising", "falling"}
+        for deck in decks:
+            assert len(deck.content) > 100
+            assert ".end" in deck.content

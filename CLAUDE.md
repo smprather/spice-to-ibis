@@ -2,7 +2,7 @@
 
 Generates IBIS (I/O Buffer Information Specification) models from SPICE subcircuit characterization.
 Supports both Cadence Spectre and NgSPICE simulators.
-Create a SPICE subckt of an LVDS driver to validate differential support.
+Supports single-ended and differential (LVDS) I/O buffer topologies.
 
 ## Commands
 
@@ -43,7 +43,7 @@ spice-to-ibis parse-results  --simulator ngspice --work-dir W --output results.j
 
 The pipeline is: **parser → deckgen → runner (spectre/ngspice) → measparser → converter → writer**
 
-```
+```text
 src/spice_to_ibis/
 ├── __init__.py
 ├── cli.py                  # Subcommand CLI (characterize, generate, simulate, parse-results, write-ibis)
@@ -82,6 +82,9 @@ src/spice_to_ibis/
 - **src layout**: all package code lives under `src/spice_to_ibis/`
 - **Testing**: pytest, test files in `tests/` mirror source modules (`test_parser.py`, etc.)
 - **Fixtures**: sample `.scs`, `.cir`, and simulator output files in `tests/fixtures/`
-- **Linting**: ruff (rules: E, F, I, W), line length 88
+- **Linting**: ruff (rules: E, F, I, W), line length 110
 - **Types**: use `from __future__ import annotations` for modern type syntax
-- **Python**: requires >=3.10
+- **Python**: requires >=3.14
+- Use Python Click, and its wrapper rich-click, for CLI
+- Always use Python Pathlib when possible
+- Add type hints to all function declarations

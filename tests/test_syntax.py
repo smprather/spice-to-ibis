@@ -74,6 +74,20 @@ class TestSpectreSyntax:
         assert "meas_t20 tran_sim cross sig=v_pad dir=rise" in result
         assert "val=0.36 name=t20_rise" in result
 
+    def test_diff_probe_empty(self):
+        s = SpectreSyntax()
+        assert s.diff_probe("outp", "outn") == ""
+
+    def test_meas_cross_diff(self):
+        s = SpectreSyntax()
+        result = s.meas_cross_diff(
+            "m1", "outp", "outn", "rise", 0.0, "t_cross_rise"
+        )
+        assert "sig=v_outp-v_outn" in result
+        assert "dir=rise" in result
+        assert "val=0.0" in result
+        assert "name=t_cross_rise" in result
+
     def test_control_block_empty(self):
         s = SpectreSyntax()
         assert s.control_block("test") == ""
@@ -161,6 +175,25 @@ class TestNgspiceSyntax:
         s = NgspiceSyntax()
         result = s.meas_cross("meas_t80", "pad", "fall", 1.44, "t80_fall")
         assert result == ".meas tran t80_fall WHEN v(pad)=1.44 FALL=1"
+
+    def test_diff_probe(self):
+        s = NgspiceSyntax()
+        result = s.diff_probe("outp", "outn")
+        assert result == "B_vdiff _vdiff 0 V=v(outp)-v(outn)"
+
+    def test_meas_cross_diff_rise(self):
+        s = NgspiceSyntax()
+        result = s.meas_cross_diff(
+            "m1", "outp", "outn", "rise", 0.0, "t_cross_rise"
+        )
+        assert result == ".meas tran t_cross_rise WHEN v(_vdiff)=0 RISE=1"
+
+    def test_meas_cross_diff_fall(self):
+        s = NgspiceSyntax()
+        result = s.meas_cross_diff(
+            "m1", "outp", "outn", "fall", 0.0, "t_cross_fall"
+        )
+        assert result == ".meas tran t_cross_fall WHEN v(_vdiff)=0 FALL=1"
 
     def test_control_block(self):
         s = NgspiceSyntax()

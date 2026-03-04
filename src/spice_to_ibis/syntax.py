@@ -82,6 +82,26 @@ class SimSyntax(abc.ABC):
         """Measurement at a signal crossing."""
 
     @abc.abstractmethod
+    def diff_probe(self, sig_p: str, sig_n: str) -> str:
+        """Behavioral source for differential voltage probing.
+
+        Returns a line defining v(_vdiff) = v(sig_p) - v(sig_n).
+        Empty string if the simulator supports differential expressions natively.
+        """
+
+    @abc.abstractmethod
+    def meas_cross_diff(
+        self,
+        meas_name: str,
+        sig_p: str,
+        sig_n: str,
+        direction: str,
+        value: float,
+        result_name: str,
+    ) -> str:
+        """Measurement at a differential signal crossing."""
+
+    @abc.abstractmethod
     def control_block(self, deck_name: str) -> str:
         """Simulator control block (NgSPICE .control/.endc)."""
 
@@ -173,6 +193,24 @@ class SpectreSyntax(SimSyntax):
     ) -> str:
         return (
             f"{meas_name} tran_sim cross sig=v_{signal} dir={direction} "
+            f"val={value} name={result_name}"
+        )
+
+    def diff_probe(self, sig_p: str, sig_n: str) -> str:
+        return ""
+
+    def meas_cross_diff(
+        self,
+        meas_name: str,
+        sig_p: str,
+        sig_n: str,
+        direction: str,
+        value: float,
+        result_name: str,
+    ) -> str:
+        return (
+            f"{meas_name} tran_sim cross "
+            f"sig=v_{sig_p}-v_{sig_n} dir={direction} "
             f"val={value} name={result_name}"
         )
 
@@ -275,6 +313,25 @@ class NgspiceSyntax(SimSyntax):
         rise_fall = "RISE" if direction == "rise" else "FALL"
         val = _ng_fmt(value)
         return f".meas tran {result_name} WHEN v({signal})={val} {rise_fall}=1"
+
+    def diff_probe(self, sig_p: str, sig_n: str) -> str:
+        return f"B_vdiff _vdiff 0 V=v({sig_p})-v({sig_n})"
+
+    def meas_cross_diff(
+        self,
+        meas_name: str,
+        sig_p: str,
+        sig_n: str,
+        direction: str,
+        value: float,
+        result_name: str,
+    ) -> str:
+        rise_fall = "RISE" if direction == "rise" else "FALL"
+        val = _ng_fmt(value)
+        return (
+            f".meas tran {result_name} "
+            f"WHEN v(_vdiff)={val} {rise_fall}=1"
+        )
 
     def control_block(self, deck_name: str) -> str:
         return f".control\nset filetype=ascii\nrun\nwrite {deck_name}.raw\n.endc\n"
